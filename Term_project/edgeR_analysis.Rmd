@@ -1,0 +1,55 @@
+---
+title: "edgeR analysis to idenfify DEGs"
+output:
+  html_document:
+    df_print: paged
+---
+Import data
+
+```{r}
+setwd('/home/haley/Documents/R/data/breast_cancer')
+data = read.delim('GSE162187_raw_counts_GRCh38.p13_NCBI.tsv', sep = '\t', row.names = 1)
+metadata = read.csv('sample_info.csv')
+```
+
+edgeR analysis:
+```{r}
+library(edgeR)
+group = metadata$outcome
+y = DGEList(counts=data, group=group)
+y$samples
+keep <- filterByExpr(y) # filter low counts
+y <- y[keep, , keep.lib.sizes=FALSE]
+y <- normLibSizes(y) # library size normalization
+y <- estimateDisp(y) # estimate dispersion factor
+y <- estimateTagwiseDisp(y)
+et <- exactTest(y,pair=c('S','R')) # exact test to compare the resistance to the sensitive samples.
+```
+
+Top 100 gene with lowest adjusted p-value are selected. Visualize the result:
+```{r}
+library(dplyr)
+df = topTags(n=100, et)$table
+df <- df %>%
+  mutate(category = case_when(
+    logFC > 0 ~ "Up",
+    logFC < 0 ~ "Down",
+  ))
+
+et_df = et$table
+et_df$category <- df$category[match(rownames(et_df),rownames(df))]
+et_df[is.na(et_df)] <- "NotSig"
+
+library(ggplot2)
+library(envalysis)
+p <- ggplot(et_df, aes(x = logCPM, y = logFC, color = category)) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("Up" = "red", 
+                                "Down" = "blue", 
+                                "NotSig" = "black")) +
+  labs(title = "Resistant vs Sensitive DEG",
+       x = "Average log Count per Million", y = "log fold change") +
+  theme_publish() +
+  theme(legend.position = "right")
+print(p)
+```
